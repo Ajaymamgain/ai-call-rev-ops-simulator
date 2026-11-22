@@ -17,11 +17,16 @@ import {
 import { ExecutiveFlowCanvas } from './components/ExecutiveFlowCanvas';
 import { ProfitSensitivityTable } from './components/ProfitSensitivityTable';
 import { RoutingLogicPanel } from './components/RoutingLogicPanel';
+import { ResourceAllocationSimulator } from './components/ResourceAllocationSimulator';
 import { RevenuePerformanceSection } from './components/RevenuePerformanceSection';
 import { SalesScriptComparisonSection } from './components/SalesScriptComparisonSection';
 import { BusinessNlpDesk } from './components/BusinessNlpDesk';
 import { ExecutiveRoiMatrix } from './components/ExecutiveRoiMatrix';
 import { createDefaultRoutingConfig, RoutingLogicConfig } from './data/routingLogic';
+import {
+  computeResourceAllocation,
+  solveAgentCountForUtilization,
+} from './data/resourceModel';
 
 const NAV_LINKS = [
   { href: '#overview', label: 'Revenue KPIs' },
@@ -36,10 +41,25 @@ export default function App() {
   const [dailyLeads, setDailyLeads] = useState<number>(8500);
   const [avgDealValueUsd, setAvgDealValueUsd] = useState<number>(480);
   const [hotLeadSharePct, setHotLeadSharePct] = useState<number>(62);
-  const [floorOccupancyPct, setFloorOccupancyPct] = useState<number>(80);
+  const [agentCount, setAgentCount] = useState<number>(72);
+  const [monthlyTrainingBudgetUsd, setMonthlyTrainingBudgetUsd] = useState<number>(14000);
   const [routingConfig, setRoutingConfig] = useState<RoutingLogicConfig>(() =>
     createDefaultRoutingConfig()
   );
+
+  const resourceMetrics = useMemo(
+    () =>
+      computeResourceAllocation({
+        agentCount,
+        monthlyTrainingBudgetUsd,
+        dailyLeads,
+        hotLeadSharePct,
+        strategy,
+      }),
+    [agentCount, monthlyTrainingBudgetUsd, dailyLeads, hotLeadSharePct, strategy]
+  );
+
+  const floorOccupancyPct = resourceMetrics.salesFloorUtilizationPct;
 
   const inputs: BusinessInputs = useMemo(
     () => ({
@@ -49,9 +69,16 @@ export default function App() {
       hotLeadSharePct,
       floorOccupancyPct,
       aiCostPerCallUsd: 0.06,
-      humanCostPerCallUsd: 1.85,
+      humanCostPerCallUsd: resourceMetrics.humanCostPerCallUsd,
     }),
-    [strategy, dailyLeads, avgDealValueUsd, hotLeadSharePct, floorOccupancyPct]
+    [
+      strategy,
+      dailyLeads,
+      avgDealValueUsd,
+      hotLeadSharePct,
+      floorOccupancyPct,
+      resourceMetrics.humanCostPerCallUsd,
+    ]
   );
 
   const economics = useMemo(() => calculateBusinessEconomics(inputs), [inputs]);
@@ -249,17 +276,27 @@ export default function App() {
                     Sales Floor Utilization
                   </label>
                   <span className="font-mono tabular-nums font-semibold text-slate-900">
-                    {floorOccupancyPct}%
+                    {floorOccupancyPct}% · {agentCount} reps · ${resourceMetrics.humanCostPerCallUsd.toFixed(2)}/call
                   </span>
                 </div>
                 <input
                   id="floor-occ-input"
                   type="range"
-                  min={50}
+                  min={45}
                   max={100}
-                  step={2}
+                  step={1}
                   value={floorOccupancyPct}
-                  onChange={(e) => setFloorOccupancyPct(Number(e.target.value))}
+                  onChange={(e) => {
+                    const desired = Number(e.target.value);
+                    const solved = solveAgentCountForUtilization(
+                      desired,
+                      monthlyTrainingBudgetUsd,
+                      dailyLeads,
+                      hotLeadSharePct,
+                      strategy
+                    );
+                    setAgentCount(solved);
+                  }}
                   className="w-full"
                 />
               </div>
@@ -372,7 +409,17 @@ export default function App() {
           avgDealValueUsd={avgDealValueUsd}
         />
 
-        {/* SECTION 2: Unified Revenue, Call Volume, Close Rate & Handle Time Charts */}
+        {/* SECTION 3: Resource Allocation Simulator (Headcount & Training Budget -> Utilization & Cost/Call) */}
+        <ResourceAllocationSimulator
+          agentCount={agentCount}
+          monthlyTrainingBudgetUsd={monthlyTrainingBudgetUsd}
+          onAgentCountChange={setAgentCount}
+          onTrainingBudgetChange={setMonthlyTrainingBudgetUsd}
+          inputs={inputs}
+          metrics={resourceMetrics}
+        />
+
+        {/* SECTION 4: Unified Revenue, Call Volume, Close Rate & Handle Time Charts */}
         <RevenuePerformanceSection inputs={inputs} economics={economics} />
 
         {/* SECTION 3: Sales Script A/B Performance Simulator */}
