@@ -1,0 +1,6 @@
+{
+  "name": "CadenceOps — Call Center AI & RevOps Simulator",
+  "description": "Interactive Revenue Operations simulator modeling hot/cold call routing flows, real-time NLP customer conversations, and behavioral shift-rhythm optimization.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
